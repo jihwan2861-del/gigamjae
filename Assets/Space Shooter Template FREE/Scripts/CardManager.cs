@@ -76,8 +76,8 @@ public class CardManager : MonoBehaviour
 
     private void Start()
     {
-        // 5장으로 시작
-        for (int i = 0; i < maxHand; i++)
+        // 1장으로 시작
+        for (int i = 0; i < 1; i++)
         {
             DrawInitialCard();
         }
@@ -126,24 +126,20 @@ public class CardManager : MonoBehaviour
         Debug.Log($"{header}\n  카드: {cards}\n  족보: {rank}");
     }
 
-    public void DrawNewCard()
+    public CardData DrawNewCard()
     {
         if (gold >= drawCost)
         {
-            if (hand.Count < maxHand)
-            {
-                gold -= drawCost;
-                hand.Add(GenerateRandomCard(1, 13));
-                PrintHandStatus("[카드 드로우]");
-            }
-            else
-            {
-                Debug.Log("[카드 드로우 실패] 핸드가 가득 찼습니다!");
-            }
+            gold -= drawCost;
+            CardData newCard = GenerateRandomCard(1, 13);
+            hand.Add(newCard);
+            PrintHandStatus("[카드 드로우]");
+            return newCard;
         }
         else
         {
             Debug.Log($"[카드 드로우 실패] 골드 부족 (현재: {gold} / 필요: {drawCost})");
+            return null;
         }
     }
 

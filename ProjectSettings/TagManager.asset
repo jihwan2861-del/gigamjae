@@ -72,3 +72,6 @@ TagManager:
   - name: VFX
     uniqueID: 738997965
     locked: 0
+  - name: Coin
+    uniqueID: 2706567587
+    locked: 0

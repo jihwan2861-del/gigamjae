@@ -13,6 +13,7 @@ GameObject:
   - component: {fileID: 7065193131098987798}
   - component: {fileID: 6038130916785987052}
   - component: {fileID: 8483859429661296235}
+  - component: {fileID: 2187639102304675371}
   m_Layer: 0
   m_Name: Coin
   m_TagString: Untagged
@@ -73,9 +74,9 @@ SpriteRenderer:
   m_AutoUVMaxDistance: 0.5
   m_AutoUVMaxAngle: 89
   m_LightmapParameters: {fileID: 0}
-  m_SortingLayerID: 0
-  m_SortingLayer: 0
-  m_SortingOrder: 0
+  m_SortingLayerID: -1588399709
+  m_SortingLayer: 8
+  m_SortingOrder: 10
   m_Sprite: {fileID: -1775518838, guid: 28618eadf850f3c4ea86a94e1e0d6773, type: 3}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_FlipX: 0
@@ -135,8 +136,12 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   value: 1
-  moveSpeed: 5
-  collectDistance: 2
+  popForce: 6
+  popHorizontal: 2
+  gravity: 12
+  destroyY: -8
+  magnetRadius: 2.5
+  magnetSpeed: 8
 --- !u!95 &8483859429661296235
 Animator:
   serializedVersion: 5
@@ -158,3 +163,30 @@ Animator:
   m_AllowConstantClipSamplingOptimization: 1
   m_KeepAnimatorStateOnDisable: 0
   m_WriteDefaultValuesOnDisable: 0
+--- !u!50 &2187639102304675371
+Rigidbody2D:
+  serializedVersion: 4
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4489354978544632233}
+  m_BodyType: 1
+  m_Simulated: 1
+  m_UseFullKinematicContacts: 0
+  m_UseAutoMass: 0
+  m_Mass: 1
+  m_LinearDrag: 0
+  m_AngularDrag: 0.05
+  m_GravityScale: 1
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_Interpolate: 0
+  m_SleepingMode: 1
+  m_CollisionDetection: 0
+  m_Constraints: 0

@@ -93,7 +93,8 @@ public class Enemy : MonoBehaviour {
 
         if (coinPrefab != null)
         {
-            Instantiate(coinPrefab, transform.position, Quaternion.identity);
+            Vector3 coinPos = new Vector3(transform.position.x, transform.position.y, 0f);
+            Instantiate(coinPrefab, coinPos, Quaternion.identity);
         }
 
         Destroy(gameObject);

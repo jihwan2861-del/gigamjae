@@ -1,3 +1,5 @@
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
@@ -28,7 +30,16 @@ public class PlayerUI : MonoBehaviour
     public TMP_Text actionCardNameText;  // "♠ A 선택 중"
 
     [Header("인터랙션 모드 표시")]
-    public GameObject interactModeIndicator; // "일시정지 중 - 카드 관리" 표시 오브젝트
+    public GameObject shop_BackGround;       // 전체 상점 배경 패널
+    public Image      gatcha_card;            // 상단에서 연출이 나오는 카드 이미지
+    public GameObject blurPanel;             // 배경 블러 패널
+    public GameObject centerHandArea;        // 중앙 카드 부모
+    public Image[]    centerHandImages;      // 중앙 카드 이미지들 (5개)
+    public GameObject gatchaCardArea;        // 상단 카드 슬롯 영역 (배경)
+
+    [Header("연출 설정 (초)")]
+    public float shuffleDuration = 1.0f;     // 셔플되는 시간
+    public float resultShowDuration = 2.0f;  // 결과를 보여주는 시간
 
     // ── 상태 ──────────────────────────────────────
     private bool isInteractMode = false;
@@ -59,6 +70,7 @@ public class PlayerUI : MonoBehaviour
         // B키 토글
         if (Input.GetKeyDown(KeyCode.B))
         {
+            Debug.Log("[PlayerUI] B키 눌림! 현재 모드: " + (isInteractMode ? "인터랙션" : "게임"));
             if (isInteractMode) ExitInteractMode();
             else                EnterInteractMode();
         }
@@ -74,8 +86,13 @@ public class PlayerUI : MonoBehaviour
         Time.timeScale = 0f;
         selectedHandIndex = selectedStorageIndex = -1;
 
-        if (interactModeIndicator != null) interactModeIndicator.SetActive(true);
-        if (drawCardButton        != null) drawCardButton.gameObject.SetActive(true);
+        if (shop_BackGround != null) shop_BackGround.SetActive(true);
+        if (blurPanel       != null) blurPanel.SetActive(true);
+        if (drawCardButton  != null) drawCardButton.gameObject.SetActive(true);
+        if (centerHandArea  != null) centerHandArea.SetActive(true);
+        if (gatchaCardArea  != null) gatchaCardArea.SetActive(true); 
+        
+        RefreshUI();
         HideActionPanel();
     }
 
@@ -85,8 +102,12 @@ public class PlayerUI : MonoBehaviour
         Time.timeScale = 1f;
         selectedHandIndex = selectedStorageIndex = -1;
 
-        if (interactModeIndicator != null) interactModeIndicator.SetActive(false);
-        if (drawCardButton        != null) drawCardButton.gameObject.SetActive(false);
+        if (shop_BackGround != null) shop_BackGround.SetActive(false);
+        if (blurPanel       != null) blurPanel.SetActive(false);
+        if (drawCardButton  != null) drawCardButton.gameObject.SetActive(false);
+        if (centerHandArea  != null) centerHandArea.SetActive(false);
+        if (gatchaCardArea  != null) gatchaCardArea.SetActive(false); 
+        
         HideActionPanel();
     }
 
@@ -95,13 +116,13 @@ public class PlayerUI : MonoBehaviour
     {
         if (CardManager.instance == null) return;
 
-        if (goldText     != null) goldText.text     = "GOLD: " + CardManager.instance.gold;
-        if (drawCostText != null) drawCostText.text = "DRAW: "  + CardManager.instance.drawCost + "G";
+        if (goldText     != null) goldText.text     = "GOLD " + CardManager.instance.gold;
+        if (drawCostText != null) drawCostText.text = "DRAW "  + CardManager.instance.drawCost + "G";
 
         if (rankText != null)
         {
             var rank = CardManager.instance.GetCurrentHandRank();
-            rankText.text = rank == PokerRank.None ? "" : "RANK: " + rank.ToString();
+            rankText.text = rank == PokerRank.None ? "" : "RANK " + rank.ToString();
         }
 
         // 핸드 카드 이미지
@@ -133,6 +154,23 @@ public class PlayerUI : MonoBehaviour
             }
         }
         if (storageText != null) storageText.text = "STORAGE";
+
+        // 중앙 카드 이미지 (추가됨!)
+        if (centerHandArea != null && centerHandArea.activeSelf && centerHandImages != null)
+        {
+            for (int i = 0; i < centerHandImages.Length; i++)
+            {
+                if (centerHandImages[i] == null) continue;
+                bool has = CardManager.instance.hand != null && i < CardManager.instance.hand.Count;
+                centerHandImages[i].gameObject.SetActive(has);
+                if (has)
+                {
+                    var c = CardManager.instance.hand[i];
+                    var sp = CardManager.instance.GetCardSprite(c.suit, c.rank);
+                    if (sp != null) centerHandImages[i].sprite = sp;
+                }
+            }
+        }
     }
 
     // ── 카드 클릭 이벤트 설정 ──────────────────────
@@ -143,9 +181,11 @@ public class PlayerUI : MonoBehaviour
             for (int i = 0; i < handImages.Length; i++)
             {
                 if (handImages[i] == null) continue;
+                handImages[i].raycastTarget = true; // 클릭 가능하도록 설정
                 int idx = i;
                 var trigger = handImages[i].gameObject.GetComponent<EventTrigger>()
                            ?? handImages[i].gameObject.AddComponent<EventTrigger>();
+                trigger.triggers.Clear(); // 중복 방지
                 var entry = new EventTrigger.Entry { eventID = EventTriggerType.PointerClick };
                 entry.callback.AddListener(_ => OnHandCardClicked(idx));
                 trigger.triggers.Add(entry);
@@ -157,19 +197,55 @@ public class PlayerUI : MonoBehaviour
             for (int i = 0; i < storageImages.Length; i++)
             {
                 if (storageImages[i] == null) continue;
+                storageImages[i].raycastTarget = true; // 클릭 가능하도록 설정
                 int idx = i;
                 var trigger = storageImages[i].gameObject.GetComponent<EventTrigger>()
                            ?? storageImages[i].gameObject.AddComponent<EventTrigger>();
+                trigger.triggers.Clear(); // 중복 방지
                 var entry = new EventTrigger.Entry { eventID = EventTriggerType.PointerClick };
                 entry.callback.AddListener(_ => OnStorageCardClicked(idx));
                 trigger.triggers.Add(entry);
             }
+        }
+
+        // 중앙 카드 클릭 이벤트 추가
+        if (centerHandImages != null)
+        {
+            for (int i = 0; i < centerHandImages.Length; i++)
+            {
+                if (centerHandImages[i] == null) continue;
+                centerHandImages[i].raycastTarget = true;
+                int idx = i;
+                var trigger = centerHandImages[i].gameObject.GetComponent<UnityEngine.EventSystems.EventTrigger>()
+                           ?? centerHandImages[i].gameObject.AddComponent<UnityEngine.EventSystems.EventTrigger>();
+                trigger.triggers.Clear();
+                var entry = new UnityEngine.EventSystems.EventTrigger.Entry { eventID = UnityEngine.EventSystems.EventTriggerType.PointerClick };
+                entry.callback.AddListener(_ => OnHandCardClicked(idx)); // 중앙 카드를 클릭해도 핸드 클릭으로 처리
+                trigger.triggers.Add(entry);
+            }
+        }
+
+        // gatcha_card 클릭 이벤트 추가 (클릭 시 해당 카드를 선택하여 액션바 표시)
+        if (gatcha_card != null)
+        {
+            gatcha_card.raycastTarget = true;
+            var trigger = gatcha_card.gameObject.GetComponent<UnityEngine.EventSystems.EventTrigger>()
+                       ?? gatcha_card.gameObject.AddComponent<UnityEngine.EventSystems.EventTrigger>();
+            trigger.triggers.Clear();
+            var entry = new UnityEngine.EventSystems.EventTrigger.Entry { eventID = UnityEngine.EventSystems.EventTriggerType.PointerClick };
+            entry.callback.AddListener(_ => {
+                // 방금 뽑힌 카드는 핸드의 마지막 인덱스에 있음
+                int lastIdx = CardManager.instance.hand.Count - 1;
+                if (lastIdx >= 0) OnHandCardClicked(lastIdx);
+            });
+            trigger.triggers.Add(entry);
         }
     }
 
     // ── 카드 클릭 처리 ────────────────────────────
     void OnHandCardClicked(int index)
     {
+        Debug.Log($"[PlayerUI] 핸드 카드 클릭 시도: index {index}, 모드 {isInteractMode}");
         if (!isInteractMode) return;
         if (CardManager.instance?.hand == null) return;
         if (index >= CardManager.instance.hand.Count) return;
@@ -197,7 +273,27 @@ public class PlayerUI : MonoBehaviour
     // ── 액션 패널 ─────────────────────────────────
     void ShowActionPanel(CardData card, bool fromStorage)
     {
-        if (actionPanel != null) actionPanel.SetActive(true);
+        if (actionPanel != null) 
+        {
+            actionPanel.SetActive(true);
+            actionPanel.transform.SetAsLastSibling();
+            
+            // 위치와 크기 강제 초기화 (화면 중앙)
+            var rect = actionPanel.GetComponent<RectTransform>();
+            if (rect != null)
+            {
+                rect.anchoredPosition = Vector2.zero;
+                rect.localScale = Vector3.one;
+            }
+
+            // 이미지 컴포넌트 점검 (투명도 등)
+            var img = actionPanel.GetComponent<UnityEngine.UI.Image>();
+            if (img != null) 
+            {
+                img.enabled = true;
+                img.color = new Color(img.color.r, img.color.g, img.color.b, 1f);
+            }
+        }
 
         if (actionCardNameText != null)
         {
@@ -227,14 +323,17 @@ public class PlayerUI : MonoBehaviour
     // ── 버튼 액션 ─────────────────────────────────
     void OnDrawCard()
     {
+        Debug.Log("[PlayerUI] 카드 뽑기 버튼 클릭!");
         if (CardManager.instance == null) return;
         if (CardManager.instance.gold < CardManager.instance.drawCost)
         { Debug.Log("[카드 관리] 골드 부족!"); return; }
-        if (CardManager.instance.hand.Count >= CardManager.instance.maxHand)
-        { Debug.Log("[카드 관리] 핸드가 가득 찼습니다!"); return; }
 
-        CardManager.instance.DrawNewCard();
-        RefreshUI();
+        CardData newCard = CardManager.instance.DrawNewCard();
+        if (newCard != null)
+        {
+            Debug.Log($"[PlayerUI] 애니메이션 시작: {newCard.suit} {newCard.rank}");
+            StartCoroutine(DrawCardAnimation(newCard, CardManager.instance.hand.Count - 1));
+        }
     }
 
     void OnDiscard()
@@ -244,6 +343,7 @@ public class PlayerUI : MonoBehaviour
         {
             CardManager.instance.hand.RemoveAt(selectedHandIndex);
             CardManager.instance.PrintHandStatus("[버린 후]");
+            if (gatcha_card != null) gatcha_card.gameObject.SetActive(false);
         }
         else if (selectedStorageIndex >= 0 && selectedStorageIndex < CardManager.instance.storage.Count)
         {
@@ -264,6 +364,9 @@ public class PlayerUI : MonoBehaviour
         CardManager.instance.storage.Add(c);
         CardManager.instance.hand.RemoveAt(selectedHandIndex);
         CardManager.instance.PrintHandStatus("[보관 후]");
+
+        if (gatcha_card != null) gatcha_card.gameObject.SetActive(false);
+
         HideActionPanel();
         RefreshUI();
     }
@@ -279,7 +382,53 @@ public class PlayerUI : MonoBehaviour
         CardManager.instance.hand.Add(c);
         CardManager.instance.storage.RemoveAt(selectedStorageIndex);
         CardManager.instance.PrintHandStatus("[핸드로 이동]");
+
+        if (gatcha_card != null) gatcha_card.gameObject.SetActive(false);
+
         HideActionPanel();
+        RefreshUI();
+    }
+
+    // ── 연출: 카드 드로우 애니메이션 ────────────────
+    System.Collections.IEnumerator DrawCardAnimation(CardData finalCard, int targetIndex)
+    {
+        Debug.Log($"[카드 연출] 시작! gatcha_card에서 연출 진행");
+        if (gatcha_card == null) 
+        { 
+            Debug.LogError("[카드 연출] 에러: gatcha_card 이미지가 할당되지 않았습니다!");
+            RefreshUI(); 
+            yield break; 
+        }
+
+        // 1. 초기화
+        gatcha_card.gameObject.SetActive(true);
+        gatcha_card.transform.SetAsLastSibling();
+        
+        RectTransform rect = gatcha_card.rectTransform;
+        rect.anchoredPosition = new Vector2(-154f, 188f);
+        rect.sizeDelta = new Vector2(100f, 150f);
+        
+        gatcha_card.transform.localScale = Vector3.one;
+        gatcha_card.color = Color.white;
+        gatcha_card.enabled = true;
+
+        // 2. 셔플 연출 (설정된 shuffleDuration 동안 진행)
+        float elapsed = 0f;
+        while (elapsed < shuffleDuration)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            int rSuit = Random.Range(0, 4);
+            int rRank = Random.Range(1, 14);
+            gatcha_card.sprite = CardManager.instance.GetCardSprite((CardSuit)rSuit, rRank);
+            yield return new WaitForSecondsRealtime(0.05f);
+        }
+
+        // 3. 최종 결과 노출 및 대기 (유저의 조작이 있을 때까지 활성화 유지)
+        gatcha_card.sprite = CardManager.instance.GetCardSprite(finalCard.suit, finalCard.rank);
+        gatcha_card.transform.localScale = Vector3.one * 1.1f;
+        Debug.Log($"[카드 연출] 결과 확정: {finalCard.suit} {finalCard.rank}. 유저 액션 대기 중...");
+        
+        // RefreshUI를 호출하여 아래쪽 슬롯들에도 카드가 나타나게 함
         RefreshUI();
     }
 

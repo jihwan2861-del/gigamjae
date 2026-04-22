@@ -11,7 +11,7 @@ public class Coin : MonoBehaviour
 
     [Header("Gravity")]
     public float gravity = 12f;        // 아래로 당기는 중력 크기
-    public float groundY = -4.5f;      // 바닥으로 간주할 Y 좌표
+    public float destroyY = -8f;      // 이 Y 아래로 내려가면 파괴 (화면 밖)
 
     [Header("Magnet")]
     public float magnetRadius = 2.5f;  // 이 거리 이내면 자석 흡수 시작
@@ -62,14 +62,9 @@ public class Coin : MonoBehaviour
                 velocity.y -= gravity * Time.deltaTime;
                 transform.position += (Vector3)(velocity * Time.deltaTime);
 
-                // 바닥에 닿으면 멈춤 (약간 통통 튀게 하고 싶으면 여기에 bounce 추가)
-                if (transform.position.y <= groundY)
-                {
-                    Vector3 pos = transform.position;
-                    pos.y = groundY;
-                    transform.position = pos;
-                    velocity = Vector2.zero;
-                }
+                // 화면 밖으로 나가면 파괴
+                if (transform.position.y < destroyY)
+                    Destroy(gameObject);
                 break;
 
             case CoinState.Magnet:
@@ -81,16 +76,21 @@ public class Coin : MonoBehaviour
                     playerTransform.position,
                     magnetSpeed * Time.deltaTime
                 );
-
-                // 아주 가까워지면 골드 획득 및 파괴
-                if (Vector2.Distance(transform.position, playerTransform.position) < 0.4f)
-                {
-                    if (CardManager.instance != null)
-                        CardManager.instance.AddGold(value);
-
-                    Destroy(gameObject);
-                }
                 break;
+        }
+    }
+
+    // 플레이어 콜라이더에 닿으면 골드 획득 (Power Up과 동일한 방식)
+    private void OnTriggerEnter2D(Collider2D collision)
+    {
+        Debug.Log($"[Coin] 트리거 감지! 충돌 오브젝트: {collision.gameObject.name}, 태그: {collision.tag}");
+
+        if (collision.CompareTag("Player"))
+        {
+            Debug.Log("[Coin] 플레이어 수집! 골드 추가");
+            if (CardManager.instance != null)
+                CardManager.instance.AddGold(value);
+            Destroy(gameObject);
         }
     }
 }

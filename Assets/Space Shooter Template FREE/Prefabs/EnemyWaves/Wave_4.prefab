@@ -49,7 +49,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   enemy: {fileID: 1373690366928948, guid: fdaaab53a8b4c0143b19d2a2e4007e44, type: 3}
   count: 14
-  speed: 30
+  speed: 10
   timeBetween: 0.5
   pathPoints:
   - {fileID: 4262781303093930}

@@ -1,9 +1,10 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
-using UnityEngine.EventSystems;
+using UnityEngine.EventSystems; // 다시 추가
 using TMPro;
+using UnityEngine.SceneManagement; 
+using System.Collections;
+using System.Collections.Generic;
 
 public class PlayerUI : MonoBehaviour
 {
@@ -13,8 +14,19 @@ public class PlayerUI : MonoBehaviour
     public TMP_Text handText;
     public TMP_Text storageText;
     public TMP_Text goldText;
+    public TMP_Text scoreText; // 점수 표시용 추가
     public TMP_Text rankText;
     public TMP_Text drawCostText;
+    public TMP_Text helpText; // "B = 상점" 가이드용 텍스트
+    [Header("Game States UI")]
+    public GameObject startPanel;      // 시작 화면 패널
+    public GameObject gameOverPanel;   // 게임 오버 패널
+    public Image fadeImage;            // 화면 암전용 이미지 (Black)
+
+    [Header("Health UI (Pixel)")]
+    public Image[] hpHearts;      // 하트 아이콘 5개 배열
+    public Sprite fullHeartSprite;  // 가득 찬 하트 이미지
+    public Sprite emptyHeartSprite; // 빈 하트 이미지
 
     [Header("Card Visuals (Sidebar)")]
     public Image[] handImages;     // 핸드 카드 이미지 5개
@@ -41,7 +53,16 @@ public class PlayerUI : MonoBehaviour
     public float shuffleDuration = 1.0f;     // 셔플되는 시간
     public float resultShowDuration = 2.0f;  // 결과를 보여주는 시간
 
+    [Header("사운드 설정")]
+    public AudioSource audioSource;
+    public AudioClip shuffleSound;
+    public AudioClip revealSound;
+    public AudioClip errorSound; // 골드 부족 등
+    public AudioClip clickSound; // 버튼 클릭 소리 [추가]
+
     // ── 상태 ──────────────────────────────────────
+    private bool isGameStarted = false;
+    private bool isGameOver = false;
     private bool isInteractMode = false;
     private int  selectedHandIndex    = -1;
     private int  selectedStorageIndex = -1;
@@ -59,20 +80,56 @@ public class PlayerUI : MonoBehaviour
         if (storeButton    != null) storeButton.onClick.AddListener(OnStore);
         if (handButton     != null) handButton.onClick.AddListener(OnMoveToHand);
 
+        // [추가] 초기 패널 설정
+        if (startPanel != null) startPanel.SetActive(true);
+        if (gameOverPanel != null) gameOverPanel.SetActive(false);
+        if (fadeImage != null) {
+            fadeImage.gameObject.SetActive(true);
+            fadeImage.color = new Color(0,0,0,0); // 투명하게 시작
+        }
+
+        Time.timeScale = 0f; // 시작 전 대기
+
         // 카드 이미지에 클릭 이벤트 추가
         SetupCardClickEvents();
 
         HideActionPanel();
     }
 
+    public void StartGame()
+    {
+        isGameStarted = true;
+        Time.timeScale = 1f;
+        if (startPanel != null) startPanel.SetActive(false);
+        Debug.Log("[PlayerUI] 게임 시작!");
+    }
+
     void Update()
     {
-        // B키 토글
+        // 1. 시작 대기 모드
+        if (!isGameStarted && !isGameOver)
+        {
+            if (Input.anyKeyDown || Input.GetMouseButtonDown(0))
+            {
+                StartGame();
+            }
+            return;
+        }
+
+        if (isGameOver) return;
+
+        // 2. B키 토글
         if (Input.GetKeyDown(KeyCode.B))
         {
             Debug.Log("[PlayerUI] B키 눌림! 현재 모드: " + (isInteractMode ? "인터랙션" : "게임"));
             if (isInteractMode) ExitInteractMode();
             else                EnterInteractMode();
+        }
+
+        // R 키로 재시작
+        if (Input.GetKeyDown(KeyCode.R))
+        {
+            RestartGame();
         }
 
         // 인터랙션 모드가 아닐 때만 UI 자동 갱신
@@ -92,6 +149,12 @@ public class PlayerUI : MonoBehaviour
         if (centerHandArea  != null) centerHandArea.SetActive(true);
         if (gatchaCardArea  != null) gatchaCardArea.SetActive(true); 
         
+        if (helpText != null) helpText.text = "B = 상점 나가기";
+
+        // [추가] 배경음악 일시정지 (BGM_Manager 태그나 이름을 가진 오브젝트의 AudioSource 정지)
+        AudioSource bgm = GameObject.Find("BGM_Manager")?.GetComponent<AudioSource>();
+        if (bgm != null) bgm.Pause();
+
         RefreshUI();
         HideActionPanel();
     }
@@ -107,7 +170,13 @@ public class PlayerUI : MonoBehaviour
         if (drawCardButton  != null) drawCardButton.gameObject.SetActive(false);
         if (centerHandArea  != null) centerHandArea.SetActive(false);
         if (gatchaCardArea  != null) gatchaCardArea.SetActive(false); 
+
+        if (helpText != null) helpText.text = "B = 상점 열기";
         
+        // [추가] 배경음악 재개
+        AudioSource bgm = GameObject.Find("BGM_Manager")?.GetComponent<AudioSource>();
+        if (bgm != null) bgm.UnPause();
+
         HideActionPanel();
     }
 
@@ -116,8 +185,30 @@ public class PlayerUI : MonoBehaviour
     {
         if (CardManager.instance == null) return;
 
-        if (goldText     != null) goldText.text     = "GOLD " + CardManager.instance.gold;
-        if (drawCostText != null) drawCostText.text = "DRAW "  + CardManager.instance.drawCost + "G";
+        // 1. 기본 정보 업데이트
+        if (goldText != null) goldText.text = "GOLD " + CardManager.instance.gold;
+        if (scoreText != null) scoreText.text = "SCORE " + CardManager.instance.score; // 점수 추가
+        if (drawCostText != null) drawCostText.text = "DRAW " + CardManager.instance.drawCost + "G";
+
+        // 1-1. 체력(하트) 업데이트
+        if (Player.instance != null && hpHearts != null)
+        {
+            for (int i = 0; i < hpHearts.Length; i++)
+            {
+                if (hpHearts[i] == null) continue;
+                
+                // 현재 체력보다 작으면 하트 표시, 크면 숨김
+                if (i < Player.instance.health)
+                {
+                    hpHearts[i].sprite = fullHeartSprite;
+                    hpHearts[i].gameObject.SetActive(true);
+                }
+                else
+                {
+                    hpHearts[i].gameObject.SetActive(false); // 하트 숨기기
+                }
+            }
+        }
 
         if (rankText != null)
         {
@@ -125,49 +216,55 @@ public class PlayerUI : MonoBehaviour
             rankText.text = rank == PokerRank.None ? "" : "RANK " + rank.ToString();
         }
 
-        // 핸드 카드 이미지
-        for (int i = 0; i < maxHandSlots; i++)
+        // 2. 사이드바 핸드
+        if (handImages != null)
         {
-            if (handImages == null || i >= handImages.Length || handImages[i] == null) continue;
-            bool has = CardManager.instance.hand != null && i < CardManager.instance.hand.Count;
-            handImages[i].gameObject.SetActive(has);
-            if (has)
+            for (int i = 0; i < maxHandSlots; i++)
             {
-                var c = CardManager.instance.hand[i];
-                var sp = CardManager.instance.GetCardSprite(c.suit, c.rank);
-                if (sp != null) handImages[i].sprite = sp;
+                if (i >= handImages.Length || handImages[i] == null) continue;
+                bool hasCard = CardManager.instance.hand != null && i < CardManager.instance.hand.Count;
+                handImages[i].gameObject.SetActive(hasCard);
+                if (hasCard)
+                {
+                    var card = CardManager.instance.hand[i];
+                    var sprite = CardManager.instance.GetCardSprite(card.suit, card.rank);
+                    if (sprite != null) handImages[i].sprite = sprite;
+                }
             }
         }
         if (handText != null) handText.text = "HAND";
 
-        // 보관함 카드 이미지
-        for (int i = 0; i < maxStorageSlots; i++)
+        // 3. 사이드바 보관함
+        if (storageImages != null)
         {
-            if (storageImages == null || i >= storageImages.Length || storageImages[i] == null) continue;
-            bool has = CardManager.instance.storage != null && i < CardManager.instance.storage.Count;
-            storageImages[i].gameObject.SetActive(has);
-            if (has)
+            for (int i = 0; i < maxStorageSlots; i++)
             {
-                var c = CardManager.instance.storage[i];
-                var sp = CardManager.instance.GetCardSprite(c.suit, c.rank);
-                if (sp != null) storageImages[i].sprite = sp;
+                if (i >= storageImages.Length || storageImages[i] == null) continue;
+                bool hasCard = CardManager.instance.storage != null && i < CardManager.instance.storage.Count;
+                storageImages[i].gameObject.SetActive(hasCard);
+                if (hasCard)
+                {
+                    var card = CardManager.instance.storage[i];
+                    var sprite = CardManager.instance.GetCardSprite(card.suit, card.rank);
+                    if (sprite != null) storageImages[i].sprite = sprite;
+                }
             }
         }
         if (storageText != null) storageText.text = "STORAGE";
 
-        // 중앙 카드 이미지 (추가됨!)
-        if (centerHandArea != null && centerHandArea.activeSelf && centerHandImages != null)
+        // 4. 중앙 핸드 슬롯
+        if (centerHandImages != null)
         {
             for (int i = 0; i < centerHandImages.Length; i++)
             {
                 if (centerHandImages[i] == null) continue;
-                bool has = CardManager.instance.hand != null && i < CardManager.instance.hand.Count;
-                centerHandImages[i].gameObject.SetActive(has);
-                if (has)
+                bool hasCard = CardManager.instance.hand != null && i < CardManager.instance.hand.Count;
+                centerHandImages[i].gameObject.SetActive(hasCard);
+                if (hasCard)
                 {
-                    var c = CardManager.instance.hand[i];
-                    var sp = CardManager.instance.GetCardSprite(c.suit, c.rank);
-                    if (sp != null) centerHandImages[i].sprite = sp;
+                    var card = CardManager.instance.hand[i];
+                    var sprite = CardManager.instance.GetCardSprite(card.suit, card.rank);
+                    if (sprite != null) centerHandImages[i].sprite = sprite;
                 }
             }
         }
@@ -278,13 +375,7 @@ public class PlayerUI : MonoBehaviour
             actionPanel.SetActive(true);
             actionPanel.transform.SetAsLastSibling();
             
-            // 위치와 크기 강제 초기화 (화면 중앙)
-            var rect = actionPanel.GetComponent<RectTransform>();
-            if (rect != null)
-            {
-                rect.anchoredPosition = Vector2.zero;
-                rect.localScale = Vector3.one;
-            }
+            // 위치와 크기 강제 초기화 제거 (유저 설정 위치 유지)
 
             // 이미지 컴포넌트 점검 (투명도 등)
             var img = actionPanel.GetComponent<UnityEngine.UI.Image>();
@@ -321,23 +412,59 @@ public class PlayerUI : MonoBehaviour
     }
 
     // ── 버튼 액션 ─────────────────────────────────
-    void OnDrawCard()
-    {
-        Debug.Log("[PlayerUI] 카드 뽑기 버튼 클릭!");
-        if (CardManager.instance == null) return;
-        if (CardManager.instance.gold < CardManager.instance.drawCost)
-        { Debug.Log("[카드 관리] 골드 부족!"); return; }
+    private Coroutine drawCoroutine;
 
+    public void OnDrawCard()
+    {
+        PlayClickSound(); // [소리 추가]
+        if (CardManager.instance == null) return;
+
+        // [중요] 이미 연출 중이면 무조건 리턴 (두 번 실행 방지)
+        if (drawCoroutine != null) return;
+
+        // 골드 부족 체크
+        if (CardManager.instance.gold < CardManager.instance.drawCost)
+        {
+            if (audioSource != null && errorSound != null) audioSource.PlayOneShot(errorSound);
+            StartCoroutine(ShowWarningMessage("골드가 부족합니다!"));
+            return;
+        }
+
+        // 카드 생성
         CardData newCard = CardManager.instance.DrawNewCard();
         if (newCard != null)
         {
-            Debug.Log($"[PlayerUI] 애니메이션 시작: {newCard.suit} {newCard.rank}");
-            StartCoroutine(DrawCardAnimation(newCard, CardManager.instance.hand.Count - 1));
+            Debug.Log($"<color=orange>[PlayerUI]</color> 드로우 실행 (카드: {newCard.suit} {newCard.rank})");
+            drawCoroutine = StartCoroutine(DrawCardAnimation(newCard, CardManager.instance.hand.Count - 1));
         }
     }
 
-    void OnDiscard()
+    IEnumerator ShowWarningMessage(string msg)
     {
+        if (messageText == null) yield break;
+
+        messageText.text = msg;
+        messageText.color = Color.red;
+        messageText.gameObject.SetActive(true);
+
+        float duration = 1.0f;
+        float elapsed = 0f;
+        Color startColor = Color.red;
+        Color endColor = new Color(1, 0, 0, 0); // 투명한 빨간색
+
+        while (elapsed < duration)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            messageText.color = Color.Lerp(startColor, endColor, elapsed / duration);
+            yield return null;
+        }
+
+        messageText.gameObject.SetActive(false);
+    }
+
+    public void OnDiscard()
+    {
+        PlayClickSound(); // [소리 추가]
         if (CardManager.instance == null) return;
         if (selectedHandIndex >= 0 && selectedHandIndex < CardManager.instance.hand.Count)
         {
@@ -353,8 +480,9 @@ public class PlayerUI : MonoBehaviour
         RefreshUI();
     }
 
-    void OnStore()
+    public void OnStore()
     {
+        PlayClickSound(); // [소리 추가]
         if (CardManager.instance == null) return;
         if (CardManager.instance.storage.Count >= CardManager.instance.maxStorage)
         { Debug.Log("[카드 관리] 보관함 가득!"); return; }
@@ -371,8 +499,9 @@ public class PlayerUI : MonoBehaviour
         RefreshUI();
     }
 
-    void OnMoveToHand()
+    public void OnMoveToHand()
     {
+        PlayClickSound(); // [소리 추가]
         if (CardManager.instance == null) return;
         if (CardManager.instance.hand.Count >= CardManager.instance.maxHand)
         { Debug.Log("[카드 관리] 핸드 가득!"); return; }
@@ -392,7 +521,7 @@ public class PlayerUI : MonoBehaviour
     // ── 연출: 카드 드로우 애니메이션 ────────────────
     System.Collections.IEnumerator DrawCardAnimation(CardData finalCard, int targetIndex)
     {
-        Debug.Log($"[카드 연출] 시작! gatcha_card에서 연출 진행");
+        Debug.Log($"<color=yellow>[PlayerUI]</color> 애니메이션 시작! 대상 카드: {finalCard.suit} {finalCard.rank}");
         if (gatcha_card == null) 
         { 
             Debug.LogError("[카드 연출] 에러: gatcha_card 이미지가 할당되지 않았습니다!");
@@ -412,26 +541,111 @@ public class PlayerUI : MonoBehaviour
         gatcha_card.color = Color.white;
         gatcha_card.enabled = true;
 
-        // 2. 셔플 연출 (설정된 shuffleDuration 동안 진행)
-        float elapsed = 0f;
-        while (elapsed < shuffleDuration)
+        // 2. 셔플 연출
+        if (audioSource != null && shuffleSound != null) 
         {
-            elapsed += Time.unscaledDeltaTime;
-            int rSuit = Random.Range(0, 4);
-            int rRank = Random.Range(1, 14);
-            gatcha_card.sprite = CardManager.instance.GetCardSprite((CardSuit)rSuit, rRank);
-            yield return new WaitForSecondsRealtime(0.05f);
+            audioSource.clip = shuffleSound;
+            audioSource.loop = true;
+            audioSource.Play();
         }
 
-        // 3. 최종 결과 노출 및 대기 (유저의 조작이 있을 때까지 활성화 유지)
-        gatcha_card.sprite = CardManager.instance.GetCardSprite(finalCard.suit, finalCard.rank);
-        gatcha_card.transform.localScale = Vector3.one * 1.1f;
-        Debug.Log($"[카드 연출] 결과 확정: {finalCard.suit} {finalCard.rank}. 유저 액션 대기 중...");
+        float startTime = Time.unscaledTime;
+        while (Time.unscaledTime - startTime < shuffleDuration)
+        {
+            int rSuit = Random.Range(0, 4);
+            int rRank = Random.Range(1, 14);
+            var tempSprite = CardManager.instance.GetCardSprite((CardSuit)rSuit, rRank);
+            if (gatcha_card != null) gatcha_card.sprite = tempSprite;
+            
+            yield return new WaitForSecondsRealtime(0.05f); // 0.05초마다 이미지 교체
+        }
+        Debug.Log($"[PlayerUI] 셔플 종료 (설정 시간: {shuffleDuration}s)");
+
+        // 3. 최종 결과 노출
+        if (audioSource != null) audioSource.Stop(); // 셔플 소리 중지
+        if (audioSource != null && revealSound != null) audioSource.PlayOneShot(revealSound);
+
+        var finalSprite = CardManager.instance.GetCardSprite(finalCard.suit, finalCard.rank);
+        if (gatcha_card != null) 
+        {
+            gatcha_card.sprite = finalSprite;
+            gatcha_card.transform.localScale = Vector3.one * 1.1f;
+        }
+        Debug.Log($"<color=green>[PlayerUI]</color> 결과 확정 및 노출 완료: {finalCard.suit} {finalCard.rank}");
         
-        // RefreshUI를 호출하여 아래쪽 슬롯들에도 카드가 나타나게 함
         RefreshUI();
+        Debug.Log("[PlayerUI] 연출 후 RefreshUI 완료");
+
+        // 1.5초 뒤에 자동으로 이미지 꺼짐
+        yield return new WaitForSecondsRealtime(1.5f);
+        if (gatcha_card != null)
+        {
+            gatcha_card.gameObject.SetActive(false);
+            gatcha_card.enabled = false;
+            Debug.Log("[PlayerUI] 가챠 카드 비활성화 완료 (연출 종료)");
+        }
+        drawCoroutine = null;
     }
+
+    [Header("메시지 설정")]
+    public TMP_Text messageText; // TextMeshPro용으로 변경
 
     private const int maxHandSlots    = 5;
     private const int maxStorageSlots = 5;
+
+    // ── 게임 오버 처리 ──────────────────────────
+    public void ShowGameOver()
+    {
+        Debug.Log("<color=red>[PlayerUI]</color> ShowGameOver 호출됨!");
+        if (isGameOver) return;
+        isGameOver = true;
+        StartCoroutine(GameOverSequence());
+    }
+
+    IEnumerator GameOverSequence()
+    {
+        if (fadeImage != null)
+        {
+            fadeImage.gameObject.SetActive(true);
+            float elapsed = 0f;
+            float duration = 2.0f;
+            while (elapsed < duration)
+            {
+                elapsed += Time.unscaledDeltaTime;
+                float alpha = Mathf.Lerp(0f, 0.8f, elapsed / duration);
+                fadeImage.color = new Color(0, 0, 0, alpha);
+                yield return null;
+            }
+        }
+
+        if (gameOverPanel != null) gameOverPanel.SetActive(true);
+        Time.timeScale = 0f; // 게임 정지
+        Debug.Log("[PlayerUI] 게임 오버 화면 표시");
+    }
+
+    public void ExitGame()
+    {
+        Debug.Log("[PlayerUI] 게임 종료");
+        #if UNITY_EDITOR
+            UnityEditor.EditorApplication.isPlaying = false;
+        #else
+            Application.Quit();
+        #endif
+    }
+
+    // ── 게임 재시작 ────────────────────────────────
+    public void RestartGame()
+    {
+        Time.timeScale = 1f;
+        SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+    }
+
+    // ── 사운드 헬퍼 ─────────────────────────────
+    public void PlayClickSound()
+    {
+        if (audioSource != null && clickSound != null)
+        {
+            audioSource.PlayOneShot(clickSound);
+        }
+    }
 }

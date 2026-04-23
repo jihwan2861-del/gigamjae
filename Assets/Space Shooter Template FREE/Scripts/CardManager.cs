@@ -27,7 +27,13 @@ public class CardManager : MonoBehaviour
     public List<CardData> storage = new List<CardData>();
     
     public int gold = 0;
+    public int score = 0; // 점수 추가
     public int drawCost = 10;
+
+    public void AddScore(int amount)
+    {
+        score += amount;
+    }
     
     [Header("Visual Resources")]
     public Sprite[] cardSprites; // 16열 4행으로 자른 스프라이트 배열
@@ -130,15 +136,22 @@ public class CardManager : MonoBehaviour
     {
         if (gold >= drawCost)
         {
+            // 핸드가 꽉 찼는지 확인 (5장 기준)
+            if (hand.Count >= maxHand)
+            {
+                Debug.LogWarning("[CardManager] 핸드가 가득 차서 더 이상 추가할 수 없습니다!");
+                return null;
+            }
+
             gold -= drawCost;
             CardData newCard = GenerateRandomCard(1, 13);
-            hand.Add(newCard);
-            PrintHandStatus("[카드 드로우]");
+            hand.Add(newCard); 
+            Debug.Log($"<color=cyan>[CardManager]</color> 카드 생성 성공: {newCard.suit} {newCard.rank} (현재 핸드: {hand.Count}장)");
             return newCard;
         }
         else
         {
-            Debug.Log($"[카드 드로우 실패] 골드 부족 (현재: {gold} / 필요: {drawCost})");
+            Debug.LogWarning($"[CardManager] 골드 부족! (현재: {gold} / 필요: {drawCost})");
             return null;
         }
     }

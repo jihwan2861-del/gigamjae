@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 
 public class Bonus : MonoBehaviour {
 
@@ -11,6 +11,13 @@ public class Bonus : MonoBehaviour {
             {
                 PlayerShooting.instance.weaponPower++;
             }
+
+            // 체력 1 회복 추가
+            if (Player.instance != null)
+            {
+                Player.instance.Heal(1);
+            }
+
             Destroy(gameObject);
         }
     }

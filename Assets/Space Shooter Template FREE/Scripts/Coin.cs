@@ -17,6 +17,9 @@ public class Coin : MonoBehaviour
     public float magnetRadius = 2.5f;  // 이 거리 이내면 자석 흡수 시작
     public float magnetSpeed = 8f;     // 자석 속도
 
+    [Header("Sound")]
+    public AudioClip collectSound;     // 코인 획득 소리
+
     // 내부 상태
     private enum CoinState { Pop, Fall, Magnet }
     private CoinState state = CoinState.Pop;
@@ -88,6 +91,13 @@ public class Coin : MonoBehaviour
         if (collision.CompareTag("Player"))
         {
             Debug.Log("[Coin] 플레이어 수집! 골드 추가");
+            
+            // 코인이 파괴되어도 소리가 나도록 PlayClipAtPoint 사용
+            if (collectSound != null)
+            {
+                AudioSource.PlayClipAtPoint(collectSound, transform.position);
+            }
+
             if (CardManager.instance != null)
                 CardManager.instance.AddGold(value);
             Destroy(gameObject);

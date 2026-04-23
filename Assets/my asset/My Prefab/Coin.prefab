@@ -142,6 +142,7 @@ MonoBehaviour:
   destroyY: -8
   magnetRadius: 2.5
   magnetSpeed: 8
+  collectSound: {fileID: 8300000, guid: 1117d5f41aab9fd4bb7edf12579a2fa9, type: 3}
 --- !u!95 &8483859429661296235
 Animator:
   serializedVersion: 5
